@@ -9,6 +9,8 @@ from models import Task
 import shutil
 import os
 import json
+import uuid
+import time
 
 # 初始化 FastAPI 高性能异步应用接管系统总台挂点拦截器
 app = FastAPI()
@@ -175,14 +177,19 @@ def delete_file(req: DeleteRequest):
 
 @app.post("/api/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
-    """基于高性能微架构挂载系统并发拉起本地写源头节点，在本地完成组装，并返发针对新网络路由可循迹的【相对】安全路由"""
+    """基于高性能微架构挂载系统并发拉起本地写源头节点，引入 UUID 防重名覆写屏障隔离机制"""
     urls = []
     for file in files:
-        file_location = f"uploads/{file.filename}"
+        base_name, file_ext = os.path.splitext(file.filename)
+        # 利用时间戳组合短效 UUID 来确保并发极高下的绝对唯一性，防止同名文件毁损旧数据
+        uniq_filename = f"{base_name}_{int(time.time())}_{uuid.uuid4().hex[:6]}{file_ext}"
+        file_location = os.path.join("uploads", uniq_filename)
+        
         with open(file_location, "wb+") as file_object:
             shutil.copyfileobj(file.file, file_object)
+            
         # 用相对路径返发从而可以进行普适部署
-        urls.append(f"/uploads/{file.filename}")
+        urls.append(f"/uploads/{uniq_filename}")
     return {"urls": urls}
 
 # ================================

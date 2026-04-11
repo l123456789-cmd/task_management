@@ -468,7 +468,13 @@ const isImage = (url) => {
 const getFileName = (url) => {
   if (!url) return ''
   const parts = url.split('/')
-  return decodeURIComponent(parts[parts.length - 1])
+  let decoded = decodeURIComponent(parts[parts.length - 1])
+  
+  // 【新视觉魔法】：我们利用正则表达式捕获我们在大后方塞入的 “_时间戳_6位UUID”
+  // 在呈现给用户的界面上将其隐形脱水，还给用户一个干净的视觉与下载命名！
+  decoded = decoded.replace(/_\d+_[a-f0-9]{6}(?=\.[a-zA-Z0-9]+$|$)/i, '')
+  
+  return decoded
 }
 
 const enlargeImage = (url) => {
