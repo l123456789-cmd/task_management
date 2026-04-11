@@ -1,0 +1,21 @@
+# IDE
+.vscode/
+.idea/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/npm-debug.log
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+
+# Database & Local Uploads
+backend/tasks.db
+backend/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
