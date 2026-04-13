@@ -43,22 +43,29 @@
 
 项目中已经为您提供了一键自动化拉起脚本（`deploy_windows.bat` / `deploy_linux.sh`）。如果您更希望**手动跨终端分步执行与调试**，本节将提供全透明的系统进程挂载标准命令：
 
-### 🎨 第一步：配置并拉起前端引擎 (Vue + Vite Dev 模式)
-在**独立的新终端窗口**中执行，专门用于页面的快速预览与热响应修改：
-```bash
-# 1. 切换至前端工作目录
-cd frontend
+### 🎨 第一步：前端引燃策略（开发模式 vs 生产集成模式）
+前端项目依托现代 Vite 构建引擎，您可以根据当前的部署应用状态，自由选择底层的打火方式：
 
-# 2. 根据 package.json 抽拉提取全套依赖项积木 (仅首次执行拉取需稍长加载时间)
-npm install
+- **🔥 方案 A (开发调试：火力全开模式 `npm run dev`)**：
+  若您正处于开发重构阶段，需要极具时效性的“代码修改 - 浏览器瞬间热重载 (HMR)”视觉反馈：
+  ```bash
+  cd frontend
+  npm install
+  npm run dev
+  ```
+  *(当出现绿色提示语指向 `http://localhost:5173/` 时，表示前台前端侧热更新引擎底座和网络端口已暴露，可以借由浏览器开发)*
 
-# 3. 引燃前端侧热更新引擎底座
-npm run dev
-```
-*(当出现绿色提示语指向 `http://localhost:5173/` 时，表示前台组件库网络端口已暴露，可以借由浏览器打开游玩)*
+- **📦 方案 B (正式环境：压缩生产包静默接管模式 `npm run build`)**：
+  若您是在外网机器或正式为团队部署服务，以脱离沉重的 Node 进程挂载和依赖束缚：
+  ```bash
+  cd frontend
+  npm install
+  npm run build
+  ```
+  *(该命令会将庞大的 Vue 项目逻辑微缩、切片且极度混淆成极致干练的一小撮纯净 `dist/` 静态网页库。这套轻代码将被移交给后方的 Python 核心引擎直接内部吞吐分发。这意味着，一旦打完包，**您的前端就不需要像 dev 时那样必须挂驻着一个黑终端运行了！**)*
 
 ### ⚙️ 第二步：接载并拉起核心总闸后端 (Python FastAPI 模式)
-请在**另开一个平铺式终端页签**中独立操作下面这一套后端核心总链路口：
+请在独立后端路口内执行网络与数据核心心跳激活：
 ```bash
 # 1. 垂直下沉进入后端物理基底
 cd backend
@@ -72,10 +79,10 @@ venv\Scripts\activate.bat
 # 【如果您是在 Linux/macOS 系统底下跑】:
 source venv/bin/activate
 
-# 4. （装配期）对着根骨要求单全量下载挂靠我们框架底层逻辑：
-pip install fastapi uvicorn peewee python-multipart aiofiles
+# 4. （装配期）单向全量下载挂靠我们框架底层逻辑（已包含核心邮件定时调度器支持）：
+pip install fastapi uvicorn peewee python-multipart aiofiles apscheduler markdown python-dotenv
 
 # 5. [终极唤醒] 拉起 Uvicorn 主脑并将之捆绑于 8000 源路口，长驻警戒处理所有并发并发订单！
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-🔥 **[生产环境挂载机制小贴士]** 当您看到后方的控制台跳出 `Uvicorn running on http://0.0.0.0:8000` 行文时，结合刚刚跑着的前端页面即宣告上下串联联通成功。而在真正对外发布的商业场景（生产环境），您只需要提前在 Frontend 执行完 `npm run build`，以后只需光溜溜**只开这一路 Python 后端**，即可凭 8000 一个端口实现整盘包容映射运行！
+🔥 **[一体化全栈挂载绝妙机制]**：如果您在第一步采用的是 `npm run build` 方法，此时您不再需要管前端！在启动完毕后，用户和团队**只需直接通过浏览器访问 `http://主机IP:8000`**，因为强大的 FastAPI 已经在内网底盘深处实现了网页直输挂载，前后端服务已经被彻底串联打通了！
