@@ -94,11 +94,12 @@ def start_scheduler():
     # 挂载所有尚未发送（可能因为服务器宕机漏发）的未来定时任务
     pendings = ScheduledEmail.select().where(ScheduledEmail.status == "Pending", ScheduledEmail.send_time.is_null(False))
     for p in pendings:
-        if p.send_time > datetime.now():
+        now = datetime.now(p.send_time.tzinfo) if getattr(p.send_time, 'tzinfo', None) else datetime.now()
+        if p.send_time > now:
             scheduler.add_job(job_send_email, 'date', run_date=p.send_time, args=[p.id], id=str(p.id), replace_existing=True)
         else:
             # 已经过期的强行发送
-            scheduler.add_job(job_send_email, 'date', run_date=datetime.now(), args=[p.id], id=str(p.id), replace_existing=True)
+            scheduler.add_job(job_send_email, 'date', run_date=now, args=[p.id], id=str(p.id), replace_existing=True)
 
 @app.on_event("shutdown")
 def shutdown_scheduler():
@@ -292,13 +293,16 @@ def schedule_email(req: EmailRequest):
         content=req.content,
         send_time=req.send_time
     )
-    if req.send_time and req.send_time > datetime.now():
-        scheduler.add_job(job_send_email, 'date', run_date=req.send_time, args=[record.id], id=str(record.id), replace_existing=True)
-        return {"message": "Email scheduled", "id": record.id}
-    else:
-        # 即刻发送，投递给异步后台任务，或挂载 0 秒任务
-        scheduler.add_job(job_send_email, 'date', run_date=datetime.now(), args=[record.id], id=str(record.id), replace_existing=True)
-        return {"message": "Email queued for immediate sending", "id": record.id}
+    if req.send_time:
+        now = datetime.now(req.send_time.tzinfo) if getattr(req.send_time, 'tzinfo', None) else datetime.now()
+        if req.send_time > now:
+            scheduler.add_job(job_send_email, 'date', run_date=req.send_time, args=[record.id], id=str(record.id), replace_existing=True)
+            return {"message": "Email scheduled", "id": record.id}
+            
+    # 即刻发送，投递给异步后台任务，或挂载极速任务
+    now_naive = datetime.now()
+    scheduler.add_job(job_send_email, 'date', run_date=now_naive, args=[record.id], id=str(record.id), replace_existing=True)
+    return {"message": "Email queued for immediate sending", "id": record.id}
 
 @app.get("/api/emails/scheduled", response_model=List[ScheduledEmailResponse])
 def get_scheduled_emails():
