@@ -1,4 +1,4 @@
-from peewee import Model, CharField, TextField, DateField
+from peewee import Model, CharField, TextField, DateField, DateTimeField
 from database import db
 
 class Task(Model):
@@ -30,4 +30,22 @@ class Task(Model):
 
     class Meta:
         # 指定将这一整条结构实例模型安全地绑定至刚建立的单例数据库引擎引擎室下
+        database = db
+
+class ScheduledEmail(Model):
+    """
+    系统定时邮件挂起任务缓存池抽象模型
+    """
+    recipient = CharField()
+    cc = CharField(null=True)
+    subject = CharField()
+    # 存放准备被发出的原始 Markdown 大部头
+    content = TextField()
+    # 如果指定为空代表即刻触发引擎发送，如果携带有精确时间轴则纳入调度池进入阻眠挂载
+    send_time = DateTimeField(null=True)
+    # 三态监测卡点：Pending (等待中) / Sent (已发送完毕) / Failed (因验证受阻报错死亡)
+    status = CharField(default="Pending")
+    error_msg = TextField(null=True)
+
+    class Meta:
         database = db

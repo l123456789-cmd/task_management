@@ -3,7 +3,7 @@
 // Task Flow Vue 前端交互大脑主控核心栈 (SFC - Single File Component)
 // [技术向]：搭建在纯血系统内并引入了多类扩展的第三方操作组建，实现超高频极速的无刷新沉浸变质式操作流。
 // =========================================================================
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import * as XLSX from 'xlsx'         // 深度解析库挂载：主要用这套引擎把提取汇总组装出来的虚拟内存字典阵列瞬间反向打包成本页的跨平台多维表格
 import { marked } from 'marked'      // 内联解析流核：负责截取物理地址下的那个静态大版面文本文件转化为我们页面可直接渲染的高阶网页语意包
 import api from './api'              // 二次高阶组装后的动态网络雷达探测发起器
@@ -23,6 +23,64 @@ const shortTermCustom = ref('')
 const reportFilterType = ref('')
 const reportFilterAssignee = ref('')
 const generatedReport = ref('')
+
+const isPreviewHtmlOpen = ref(false)
+
+const emailSubject = ref('个人团队每日工作进展汇报')
+const emailSendMode = ref('immediate')
+const emailScheduledTime = ref('')
+const isSendingEmail = ref(false)
+
+const savedEmailProfiles = ref(JSON.parse(localStorage.getItem('taskflow_email_profiles') || '[]'))
+const selectedProfileId = ref('')
+
+watch(savedEmailProfiles, (val) => {
+  localStorage.setItem('taskflow_email_profiles', JSON.stringify(val))
+}, { deep: true })
+
+const emailRecipient = ref('')
+const emailCc = ref('')
+
+const applyEmailProfile = () => {
+  const profile = savedEmailProfiles.value.find(p => p.id === selectedProfileId.value)
+  if (profile) {
+    emailRecipient.value = profile.to || ''
+    emailCc.value = profile.cc || ''
+  } else {
+    emailRecipient.value = ''
+    emailCc.value = ''
+  }
+}
+
+const saveCurrentAsProfile = () => {
+  if (!emailRecipient.value) {
+    alert("至少需要填写一份目标接收人 (To) 才能保存预设组合！")
+    return
+  }
+  const desc = prompt("给这份收发名单取个好记的名字吧 (例如：研发组高层汇报配置)：")
+  if (desc) {
+    savedEmailProfiles.value.push({
+      id: Date.now().toString(),
+      desc: desc,
+      to: emailRecipient.value,
+      cc: emailCc.value
+    })
+    selectedProfileId.value = savedEmailProfiles.value[savedEmailProfiles.value.length - 1].id
+    alert("保存快捷预设套餐成功！")
+  }
+}
+
+const deleteProfile = (id) => {
+  savedEmailProfiles.value = savedEmailProfiles.value.filter(p => p.id !== id)
+  if (selectedProfileId.value === id) {
+    selectedProfileId.value = ''
+    emailRecipient.value = ''
+    emailCc.value = ''
+  }
+}
+
+const isScheduledTasksModalOpen = ref(false)
+const scheduledTasks = ref([])
 
 const taskForm = ref({
   title: '',
@@ -165,6 +223,67 @@ const closeReportModal = () => {
   isReportModalOpen.value = false
 }
 
+const openScheduledTasksModal = async () => {
+  isScheduledTasksModalOpen.value = true
+  await fetchScheduledTasks()
+}
+
+const closeScheduledTasksModal = () => {
+  isScheduledTasksModalOpen.value = false
+}
+
+const fetchScheduledTasks = async () => {
+  try {
+    const res = await api.get('/emails/scheduled')
+    scheduledTasks.value = res.data
+  } catch (err) {
+    console.error("无法提取定时任务列表", err)
+  }
+}
+
+const cancelScheduledTask = async (id) => {
+  if(!confirm('确定取消该条定时发送任务吗？')) return
+  try {
+    await api.delete(`/emails/scheduled/${id}`)
+    await fetchScheduledTasks()
+  } catch (e) {
+    console.error(e)
+    alert("取消操作失败")
+  }
+}
+
+const scheduleEmail = async () => {
+  if (!emailRecipient.value) {
+    alert("请填写收件人邮箱！")
+    return
+  }
+  isSendingEmail.value = true
+  try {
+    const payload = {
+      recipient: emailRecipient.value,
+      cc: emailCc.value,
+      subject: emailSubject.value,
+      content: generatedReport.value
+    }
+    if (emailSendMode.value === 'scheduled' && emailScheduledTime.value) {
+      payload.send_time = new Date(emailScheduledTime.value).toISOString()
+    }
+    await api.post('/emails/schedule', payload)
+    
+    alert(emailSendMode.value === 'immediate' ? "邮件外发请求已成功发送并投入后台缓冲执行列队！" : "定时任务邮件已妥善挂载至主控安全时钟锁中！")
+  } catch (err) {
+    console.error(err)
+    alert("邮件分发任务启动失败，请检查网络链路、后台引擎状态或核心 .env 表环境。")
+  } finally {
+    isSendingEmail.value = false
+  }
+}
+
+const formatDate = (isoString) => {
+  if(!isoString) return '-'
+  return new Date(isoString).toLocaleString('zh-CN', { hour12: false })
+}
+
 const generateReport = () => {
   const targetProjects = selectedProjectsForReport.value
   const fType = reportFilterType.value
@@ -181,7 +300,7 @@ const generateReport = () => {
     (t.status === 'To Do' || t.status === 'In Progress'))
 
   const dateStr = new Date().toLocaleDateString('zh-CN')
-  let report = `# 📅 团队工作日报 (${dateStr})\n\n---\n\n`
+  let report = `# 📅 个人工作日报 (${dateStr})\n\n---\n\n`
   
   report += `## 🟢 今日进展情况\n\n`
   if (todayTasks.length === 0) {
@@ -258,7 +377,6 @@ const generateReport = () => {
     report += `> 暂无内容\n\n`
   }
   
-  report += `---\n*自动生成于 Task Flow 管理平台*\n`
   generatedReport.value = report
 }
 
@@ -491,6 +609,7 @@ const closeZoom = () => {
     <header class="glass-header">
       <h1>Task Flow</h1>
       <div class="header-actions">
+        <button class="btn text-btn glass-btn" @click="openScheduledTasksModal()" style="border: 1px solid #ffab40; color: #ffab40; font-weight: bold;">⏰ 调度阵列大盘</button>
         <button class="btn text-btn glass-btn" @click="openDocsModal()">📖 操作指南</button>
         <button class="btn secondary glass-btn" @click="openReportModal()">📊 生成日报</button>
         <button class="btn primary glass-btn" @click="openModal()">+ New Task</button>
@@ -652,7 +771,7 @@ const closeZoom = () => {
 
     <!-- Daily Report Modal overlay -->
     <div v-if="isReportModalOpen" class="modal-overlay">
-      <div class="modal-content glass-modal report-modal">
+      <div class="modal-content glass-modal report-modal" style="max-width: 1000px; width: 95vw;">
         <div class="modal-header">
           <h2>📊 生成团队日报</h2>
           <button type="button" @click="closeReportModal" class="btn text-btn" style="padding: 0.5rem; font-size: 1.5rem; margin-top:-1rem;">×</button>
@@ -713,8 +832,121 @@ const closeZoom = () => {
             <button type="button" @click="downloadReportText" class="btn secondary">📥 归档为 .md 文本</button>
             <button type="button" @click="downloadReportExcel" class="btn primary" style="background: linear-gradient(135deg, #43a047 0%, #1de9b6 100%);">📊 生成真实 Excel 电子表格</button>
           </div>
+          
+          <div style="margin-top: 1.5rem; padding: 1.5rem; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px dashed rgba(64, 224, 208, 0.5);">
+            
+            <!-- Address Book Manager Line -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+              <h3 style="margin: 0; color: #40e0d0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                📧 Outlook 企业级邮箱高管分发流引擎
+              </h3>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <select v-model="selectedProfileId" @change="applyEmailProfile" class="glass-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem; height: auto;">
+                  <option value="">-- 手动任意输入 / 选择下方历史组合 --</option>
+                  <option v-for="p in savedEmailProfiles" :key="p.id" :value="p.id">🔖 {{ p.desc }}</option>
+                </select>
+                <button type="button" @click="saveCurrentAsProfile" class="btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" title="将下方当前填入的信箱打包记忆保存">💾 保存套组</button>
+                <button v-if="selectedProfileId" type="button" @click="deleteProfile(selectedProfileId)" class="btn danger-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">🗑️ 删除此套组</button>
+              </div>
+            </div>
+
+            <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin-top: -0.5rem; margin-bottom: 1rem;">
+              该引擎会自动将您上方的原生 Markdown 语意转换为企业高感度 HTML 回执表格，并经由专属 TLS 信道点对点极速送达。（支持立刻发射与离线静默挂起两类作业模式）
+            </p>
+            <div class="form-row">
+              <div class="form-group" style="flex:1; margin-bottom: 0.5rem;">
+                <label>目标接收账户 To (多个请用逗号隔开)</label>
+                <input type="text" v-model="emailRecipient" class="glass-input" placeholder="boss@outlook.com, team@outlook.com">
+              </div>
+              <div class="form-group" style="flex:1; margin-bottom: 0.5rem;">
+                <label>邮件抄送方 Cc (可选)</label>
+                <input type="text" v-model="emailCc" class="glass-input" placeholder="manager@outlook.com">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label>专属发文投递核准主标题 (Subject)</label>
+              <input type="text" v-model="emailSubject" class="glass-input">
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:1; margin-bottom: 0;">
+                <label>强行发文底层调度逻辑选择</label>
+                <select v-model="emailSendMode" class="glass-input">
+                  <option value="immediate">⚡ 强制即刻底层点火穿透 (Immediately)</option>
+                  <option value="scheduled">⏱️ 锁定并静待系统的远期强唤醒指令投送</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1; margin-bottom: 0;" v-if="emailSendMode === 'scheduled'">
+                <label>📅 请严格锁定系统定时阻断撤防日期轴</label>
+                <input type="datetime-local" v-model="emailScheduledTime" class="glass-input" style="color: #ffab40; font-weight: bold;">
+              </div>
+            </div>
+
+            <div style="margin-top: 1rem; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 1rem;">
+              <button type="button" @click="isPreviewHtmlOpen = !isPreviewHtmlOpen" class="btn text-btn" style="width: 100%; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1rem;">
+                {{ isPreviewHtmlOpen ? '👀 收起 HTML 收件端真实排版预览' : '👀 预览接收方 Outlook 中的真实 HTML 效果' }}
+              </button>
+              
+              <div v-if="isPreviewHtmlOpen" style="background: white; color: black; padding: 2rem; border-radius: 8px; max-height: 400px; overflow-y: auto; text-align: left; margin-bottom: 1rem; user-select: text;" v-html="marked(generatedReport || '暂无内容')"></div>
+            </div>
+
+            <button type="button" @click="scheduleEmail" class="btn primary" :disabled="isSendingEmail" style="width: 100%; height: 50px; background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%); font-weight: bold; font-size: 1.1rem; border-radius: 8px;">
+              {{ isSendingEmail ? '⚙️ 高可用节点接入接管打包处理中，切勿中断关机...' : (emailSendMode === 'immediate' ? '🚀 核对无误，弹链上膛直接开火发送！' : '📥 提取密匙入库进锁！精准离线定时挂载！') }}
+            </button>
+          </div>
+
         </div>
 
+      </div>
+    </div>
+
+    <!-- ⏰ 定时调度总控室大盘 Modal -->
+    <div v-if="isScheduledTasksModalOpen" class="modal-overlay" @click.self="closeScheduledTasksModal">
+      <div class="modal-content glass-modal docs-modal" style="max-width: 1200px; width: 95vw;">
+        <div class="modal-header">
+          <h2 style="margin: 0; font-size: 1.5rem; color: #ffab40;">⏰ Outlook 预载防线及调度指挥阵列中心</h2>
+          <button type="button" @click="closeScheduledTasksModal" class="btn text-btn" style="padding: 0.5rem; font-size: 1.5rem; margin-top:-1rem;">×</button>
+        </div>
+        <div class="modal-body" style="padding-top: 1rem;">
+          <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem;">
+            全系尚未分发离轨或执行结束的历史作业与即期悬置列队在此处呈现零延迟全局快照监控大黑盒阵列网图。您可以随时监控发送端口状态，对于处于阻眠池状态下的寄挂型命令甚至支持极高权限的紧急硬斩断销毁防错！
+          </p>
+          <div style="overflow-x: auto;">
+            <table class="glass-table schedule-table" style="width: 100%; text-align: left; border-collapse: collapse; margin-top: 1rem;">
+              <thead>
+                <tr style="border-bottom: 2px solid rgba(255,255,255,0.1);">
+                  <th style="padding: 1rem; width: 10%;">系统机控状态</th>
+                  <th style="padding: 1rem; width: 15%;">收件方(To)</th>
+                  <th style="padding: 1rem; width: 15%;">抄送方(Cc)</th>
+                  <th style="padding: 1rem; width: 25%;">内核标题(Subject)</th>
+                  <th style="padding: 1rem; width: 15%;">预警解除时间点</th>
+                  <th style="padding: 1rem; width: 10%;">异常栈(Errors)</th>
+                  <th style="padding: 1rem; width: 10%;">一键切除预配(Actions)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="scheduledTasks.length === 0">
+                  <td colspan="7" style="text-align: center; color: rgba(255,255,255,0.4); padding: 3rem;">底库时钟区现目前呈现极度清洁状态，没有获取及游离任何待发射与归档预配指令包裹。</td>
+                </tr>
+                <tr v-for="t in scheduledTasks" :key="t.id" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 1rem;">
+                    <span :style="{ fontWeight: 'bold', color: t.status === 'Sent' ? '#00e676' : (t.status === 'Failed' ? '#ff1744' : (t.status === 'Cancelled' ? '#9e9e9e' : '#ffd700'))}">
+                      {{ t.status === 'Pending' ? '⏱️ Pend' : t.status }}
+                    </span>
+                  </td>
+                  <td style="padding: 1rem; font-size: 0.85rem; word-break: break-all;">{{ t.recipient }}</td>
+                  <td style="padding: 1rem; font-size: 0.85rem; word-break: break-all;">{{ t.cc || '-' }}</td>
+                  <td style="padding: 1rem; font-size: 0.9rem;">{{ t.subject }}</td>
+                  <td style="padding: 1rem; font-size: 0.85rem; color: rgba(255,255,255,0.8);">{{ t.send_time ? formatDate(t.send_time) : '立即突破' }}</td>
+                  <td style="padding: 1rem; font-size: 0.75rem; color: #ff8a80;">{{ t.error_msg || '-' }}</td>
+                  <td style="padding: 1rem;">
+                    <button v-if="t.status === 'Pending'" @click="cancelScheduledTask(t.id)" class="btn danger-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius:4px; border:1px solid #ff1744; color:white; background:transparent;">🚨 强杀！</button>
+                    <span v-else style="color: rgba(255,255,255,0.3); font-size: 0.8rem;">锁定</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
